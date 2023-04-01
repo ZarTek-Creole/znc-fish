@@ -16,9 +16,17 @@ using std::map;
 #include <openssl/blowfish.h>
 
 #define REQUIRESSL	1
+#define MODVERSION	1.0
+#define MODURL		"https://github.com/ZarTek-Creole/znc-fish"
+#define MODAUTHOR	"ZarTek-Creole"
+#define MODDESC		"Fish par ZarTek avec support ECB et CBC pour salon et message privée"
+#define MODSSLMIN	0x1010100fL
+#define MODSSLTEXT	"OpenSSL 1.1.1 or later"
 
-#if OPENSSL_VERSION_NUMBER < 0x1010100fL
-#error Sorry, OpenSSL versions prior to 1.1.1 are not supported
+
+#if OPENSSL_VERSION_NUMBER < MODSSLMIN
+/*  error with MODSSLTEXT message */
+#error "Sorry, OpenSSL need " + MODSSLTEXT + "
 #elif OPENSSL_VERSION_NUMBER < 0x30000000L
 #define SSL_get1_peer_certificate SSL_get_peer_certificate
 #endif
@@ -614,7 +622,13 @@ public:
 					}
 			    }
 			}
-		} else if (sCmd.CaseCmp("HELP") == 0) {
+		} else if (sCmd.CaseCmp("VERSION") == 0) {
+			PutModule("ZNC-FiSH v" + CString(MODVERSION) + " by " + CString(MODAUTHOR));
+			PutModule("Description: " + CString(MODDESC));
+			/* show SSL version and date */
+			PutModule(CString(SSLeay_version(SSLEAY_VERSION)));
+			PutModule("URL: " + CString(MODURL));
+		} else {
 			CTable Table;
 			Table.AddColumn("Command");
 			Table.AddColumn("Arguments");
@@ -661,10 +675,13 @@ public:
 			Table.SetCell("Arguments", "");
 			Table.SetCell("Description", "Display this message");
 
+			Table.AddRow();
+			Table.SetCell("Command", "Version");
+			Table.SetCell("Arguments", "");
+			Table.SetCell("Description", "Show the version of this module");
+
 			PutModule(Table);
-		} else {
-			PutModule("Unknown command, try 'Help'");
-		}
+		} 
 	}
 
 	void DelStaleKeyExchanges(time_t iTime) {
@@ -815,4 +832,4 @@ template<> void TModInfo<CFishMod>(CModInfo& Info) {
         Info.SetWikiPage("CFishMod");
 }
 
-NETWORKMODULEDEFS(CFishMod, "FiSH encryption for channel/private messages")
+NETWORKMODULEDEFS(CFishMod, MODDESC)
