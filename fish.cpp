@@ -17,8 +17,10 @@ using std::map;
 
 #define REQUIRESSL	1
 
-#if (OPENSSL_VERSION_NUMBER < 0x0090800f)
-#error "We require openssl >= 0.9.8"
+#if OPENSSL_VERSION_NUMBER < 0x1010100fL
+#error Sorry, OpenSSL versions prior to 1.1.1 are not supported
+#elif OPENSSL_VERSION_NUMBER < 0x30000000L
+#define SSL_get1_peer_certificate SSL_get_peer_certificate
 #endif
 
 /*
