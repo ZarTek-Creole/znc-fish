@@ -1,0 +1,13 @@
+{
+    "recommendations": [
+        "ms-vscode.cpptools-themes",
+        "ms-vscode-remote.vscode-remote-extensionpack",
+        "ms-ceintl.vscode-language-pack-fr",
+        "eamodio.gitlens",
+        "vinirossa.vscode-gitandgithub-pack",
+        "matepek.vscode-catch2-test-adapter",
+        "jeff-hykin.better-cpp-syntax",
+        "github.copilot",
+        "hars.cppsnippets"
+    ]
+}
