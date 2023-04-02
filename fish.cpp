@@ -1,11 +1,7 @@
-#include <znc/main.h>
 #include <znc/User.h>
-#include <znc/Nick.h>
-#include <znc/Modules.h>
 #include <znc/Chan.h>
 #include <znc/IRCNetwork.h>
 
-#include <string.h>
 using std::vector;
 using std::pair;
 using std::map;
@@ -150,6 +146,8 @@ char *encrypts(char *key,char *str) {
   if(key==NULL||str==NULL) return NULL;
 
   length=strlen(str);
+  // fix error ‘void BF_set_key(BF_KEY*, int, const unsigned char*)’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
+
   BF_set_key(&bfkey, strlen(key), (const unsigned char *)key);
 
   s=(char *)malloc(length+9);
@@ -234,8 +232,6 @@ protected:
 class CFishMod : public CModule {
 public:
 	MODCONSTRUCTOR(CFishMod) {}
-	virtual ~CFishMod() {
-	}
 
     virtual bool OnLoad(const CString& sArgs, CString& sMessage) {
 		// if we have an 'old version', simply upgrade it
@@ -305,7 +301,8 @@ public:
 		if (it != EndNV()) {
 			CChan* pChan = m_pNetwork->FindChan(sTarget);
 			if ((pChan) && !(pChan->AutoClearChanBuffer())) {
-				pChan->AddBuffer(":" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage);
+				pChan->AddBuffer(":\244" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage);
+				m_pUser->PutUser(":\244" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage, NULL, m_pClient);
 			}
 			char * cMsg = encrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
 
