@@ -396,7 +396,7 @@ public:
       CChan *pChan = m_pNetwork->FindChan(sTarget);
       if ((pChan) && !(pChan->AutoClearChanBuffer()))
       {
-        pChan->AddBuffer(":" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :\001ACTION " + sMessage + "\001");
+        pChan->AddBuffer(":\244" + _NAMEDFMT(m_pNetwork->GetIRCNick().GetNickMask()) + " PRIVMSG " + _NAMEDFMT(sTarget) + " :" + _NAMEDFMT(sMessage));
       }
       char *cMsg = encrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
 
