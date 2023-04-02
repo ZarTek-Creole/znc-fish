@@ -294,7 +294,7 @@ public:
     CString command = sMessage.Token(0);
     CString sOtherPub_Key = sMessage.Token(1);
 
-    if (command.CaseCmp("DH1080_INIT") == 0 && !sOtherPub_Key.empty())
+    if (command.Equals("DH1080_INIT") && !sOtherPub_Key.empty())
     {
       CString sPriv_Key;
       CString sPub_Key;
@@ -312,7 +312,7 @@ public:
       PutModule("Key for " + Nick.GetNick() + " successfully set.");
       return HALT;
     }
-    else if (command.CaseCmp("DH1080_FINISH") == 0 && !sOtherPub_Key.empty())
+    else if (command.Equals("DH1080_FINISH") && !sOtherPub_Key.empty())
     {
       CString sPriv_Key;
       CString sSecretKey;
@@ -580,7 +580,7 @@ public:
   {
     CString sCmd = sCommand.Token(0);
 
-    if (sCmd.CaseCmp("DELKEY") == 0)
+    if (sCmd.Equals("DELKEY"))
     {
       CString sTarget = sCommand.Token(1);
 
@@ -600,7 +600,7 @@ public:
         PutModule("Usage DelKey <#chan|Nick>");
       }
     }
-    else if (sCmd.CaseCmp("SETKEY") == 0)
+    else if (sCmd.Equals("SETKEY"))
     {
       CString sTarget = sCommand.Token(1);
       CString sKey = sCommand.Token(2, true);
@@ -615,7 +615,7 @@ public:
         PutModule("Usage: SetKey <#chan|Nick> <Key>");
       }
     }
-    else if (sCmd.CaseCmp("SHOWKEY") == 0)
+    else if (sCmd.Equals("SHOWKEY"))
     {
       CString sTarget = sCommand.Token(1);
 
@@ -637,7 +637,7 @@ public:
         PutModule("Usage ShowKey <#chan|Nick>");
       }
     }
-    else if (sCmd.CaseCmp("LISTKEYS") == 0)
+    else if (sCmd.Equals("LISTKEYS"))
     {
       if (BeginNV() == EndNV())
       {
@@ -663,7 +663,7 @@ public:
         PutModule(Table);
       }
     }
-    else if (sCmd.CaseCmp("LISTCONFIG") == 0)
+    else if (sCmd.Equals("LISTCONFIG"))
     {
       // we would use tables here, but they mangle things like irc colour codes >.>
       for (MCString::iterator it = BeginNV(); it != EndNV(); it++)
@@ -674,7 +674,7 @@ public:
         }
       }
     }
-    else if (sCmd.CaseCmp("SETCONFIG") == 0)
+    else if (sCmd.Equals("SETCONFIG"))
     {
       CString sName = sCommand.Token(1);
       CString sValue = sCommand.Token(2, true);
@@ -697,7 +697,7 @@ public:
         PutModule("Usage: SetConfig <Name> <Value>");
       }
     }
-    else if (sCmd.CaseCmp("KEYX") == 0)
+    else if (sCmd.Equals("KEYX"))
     {
       CString sTarget = sCommand.Token(1);
 
@@ -728,7 +728,7 @@ public:
         }
       }
     }
-    else if (sCmd.CaseCmp("VERSION") == 0)
+    else if (sCmd.Equals("VERSION"))
     {
       PutModule("ZNC-FiSH v" + CString(MODVERSION) + " by " + CString(MODAUTHOR));
       PutModule("Description: " + CString(MODDESC));
