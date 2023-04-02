@@ -360,11 +360,12 @@ public:
 
     if (it != EndNV())
     {
-      CChan *pChan = m_pNetwork->FindChan(sTarget);
+      CChan* pChan = GetNetwork()->FindChan(sTarget);
+      CString sNickMask = GetNetwork()->GetIRCNick().GetNickMask();
       if ((pChan) && !(pChan->AutoClearChanBuffer()))
       {
-        pChan->AddBuffer(":" + NickPrefix() + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage);
-        m_pNetwork->PutUser(":" + NickPrefix() + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage, NULL, m_pClient);
+        pChan->AddBuffer(":" + NickPrefix() + _NAMEDFMT(sNickMask) + " PRIVMSG " + _NAMEDFMT(sTarget) + " :{text}", sMessage);
+				GetUser()->PutUser(":" + NickPrefix() + sNickMask + " PRIVMSG " + sTarget + " :" + sMessage, NULL, GetClient());
       }
       char *cMsg = encrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
 
