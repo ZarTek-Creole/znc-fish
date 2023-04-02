@@ -18,6 +18,7 @@ using std::vector;
 #define MODDESC "Fish par ZarTek avec support ECB et CBC pour salon et message privée"
 #define MODSSLMIN 0x1010100fL
 #define MODSSLTEXT "OpenSSL 1.1.1 or later"
+#define NICK_PREFIX_KEY	"[nick-prefix]"
 
 #if OPENSSL_VERSION_NUMBER < MODSSLMIN
 /*  error with MODSSLTEXT message */
@@ -270,6 +271,10 @@ protected:
 
 class CFishMod : public CModule
 {
+  CString NickPrefix() {
+		MCString::iterator it = FindNV(NICK_PREFIX_KEY);
+		return it != EndNV() ? it->second : "*";
+	}
 public:
   MODCONSTRUCTOR(CFishMod) {}
 
@@ -344,6 +349,7 @@ public:
 
   virtual EModRet OnUserMsg(CString &sTarget, CString &sMessage)
   {
+    sTarget.TrimLeft(NickPrefix());
     MCString::iterator it = FindNV("key " + sTarget.AsLower());
 
     if (sMessage.Left(2) == "-e")
@@ -357,8 +363,8 @@ public:
       CChan *pChan = m_pNetwork->FindChan(sTarget);
       if ((pChan) && !(pChan->AutoClearChanBuffer()))
       {
-        pChan->AddBuffer(":\244" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage);
-        m_pNetwork->PutUser(":\244" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage, NULL, m_pClient);
+        pChan->AddBuffer(":" + NickPrefix() + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage);
+        m_pNetwork->PutUser(":" + NickPrefix() + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage, NULL, m_pClient);
       }
       char *cMsg = encrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
 
@@ -389,6 +395,7 @@ public:
 
   virtual EModRet OnUserAction(CString &sTarget, CString &sMessage)
   {
+    sTarget.TrimLeft(NickPrefix());
     MCString::iterator it = FindNV("key " + sTarget.AsLower());
 
     if (it != EndNV())
@@ -396,7 +403,7 @@ public:
       CChan *pChan = m_pNetwork->FindChan(sTarget);
       if ((pChan) && !(pChan->AutoClearChanBuffer()))
       {
-        pChan->AddBuffer(":\244" + _NAMEDFMT(m_pNetwork->GetIRCNick().GetNickMask()) + " PRIVMSG " + _NAMEDFMT(sTarget) + " :" + _NAMEDFMT(sMessage));
+        pChan->AddBuffer(":" + NickPrefix() + _NAMEDFMT(m_pNetwork->GetIRCNick().GetNickMask()) + " PRIVMSG " + _NAMEDFMT(sTarget) + " :{text}", sMessage);
       }
       char *cMsg = encrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
 
@@ -660,6 +667,12 @@ public:
           }
         }
 
+				MCString::iterator it = FindNV(NICK_PREFIX_KEY);
+				if (it == EndNV()) {
+					Table.AddRow();
+					Table.SetCell("Target", NICK_PREFIX_KEY);
+					Table.SetCell("Key", NickPrefix());
+				}
         PutModule(Table);
       }
     }
