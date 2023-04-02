@@ -26,7 +26,7 @@ using std::map;
 
 #if OPENSSL_VERSION_NUMBER < MODSSLMIN
 /*  error with MODSSLTEXT message */
-#error "Sorry, OpenSSL need " + MODSSLTEXT + "
+#error "Sorry, OpenSSL need " + MODSSLTEXT
 #elif OPENSSL_VERSION_NUMBER < 0x30000000L
 #define SSL_get1_peer_certificate SSL_get_peer_certificate
 #endif
@@ -244,31 +244,8 @@ public:
 
 		// oldest version, before any version numbers!
 		if (version == EndNV()) {
-			PutModule("Upgraded Database to Version 1, you need to set your keys again");
-			// if (BeginNV() != EndNV()) {  // if we actually have any keys to convert
-				// // need to do this since we're adding to NV, and if we don't it loops forever, processing new entries
-				// MCString::iterator it = BeginNV();
-				// while (it != EndNV()) {
-					// it++;
-				// }
-				// it--;
-
-				// CString LastNV = it->first;
-
-				// now loop over every key and upgrade
-				// for (it = BeginNV(); it->first != LastNV; it++) {
-					// SetNV("key " + it->first, it->second);
-					// PutModule("key for " + it->first + " upgraded");
-				// }
-				// SetNV("key " + it->first, it->second);
-				// PutModule("key for " + it->first + " upgraded");
-
-				// PutModule("Upgraded Database to Version 1");
-			// }
-
-			SetNV("config prefix_encrypted", "\00312e\003  ");
-			SetNV("config prefix_decrypted", "\00304d\003  ");
-
+			SetNV("config postfix_encrypted", "  \00312e\003");
+			SetNV("config postfix_decrypted", "  \00304d\003");
 			SetNV("version", "1");
 		}
 
@@ -500,7 +477,7 @@ public:
 				}
 
 				char *cMsg = decrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
-				sMessage = GetNV("config prefix_encrypted") + CString(cMsg);  // blue  'e'  for nice, encrypted
+				sMessage = CString(cMsg) + GetNV("config postfix_encrypted");  // blue  'e'  for nice, encrypted
 
 				if (mark_broken_block) {
 					sMessage += "  \002&\002";
@@ -508,7 +485,7 @@ public:
 
 				free(cMsg);
 			} else {
-                sMessage = GetNV("config prefix_decrypted") + sMessage;  // red  'd'  for bad, not encrypted
+                sMessage = sMessage + GetNV("config postfix_decrypted");  // red  'd'  for bad, not encrypted
             }
         }
 	}

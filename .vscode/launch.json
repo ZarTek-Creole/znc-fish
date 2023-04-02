@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug ZNC Module",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/usr/bin/zsh",
+            "args": [
+                "-c",
+                "/usr/bin/gdb znc --debug -D --no-color --datadir=~/.znc"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "build ZNC Module",
+            "miDebuggerPath": "/usr/bin/gdb"
+        }
+    ]
+}
