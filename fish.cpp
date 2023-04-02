@@ -358,13 +358,13 @@ public:
       if ((pChan) && !(pChan->AutoClearChanBuffer()))
       {
         pChan->AddBuffer(":\244" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage);
-        m_pUser->PutUser(":\244" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage, NULL, m_pClient);
+        m_pNetwork->PutUser(":\244" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage, NULL, m_pClient);
       }
       char *cMsg = encrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
 
       CString sMsg = "+OK " + CString(cMsg);
       PutIRC("PRIVMSG " + sTarget + " :" + sMsg);
-      m_pUser->PutUser(":" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage, NULL, m_pClient);
+      m_pNetwork->PutUser(":" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage, NULL, m_pClient);
 
       free(cMsg);
 
@@ -402,7 +402,7 @@ public:
 
       CString sMsg = "+OK " + CString(cMsg);
       PutIRC("PRIVMSG " + sTarget + " :\001ACTION " + sMsg + "\001");
-      m_pUser->PutUser(":" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :\001ACTION " + sMessage + "\001", NULL, m_pClient);
+      m_pNetwork->PutUser(":" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :\001ACTION " + sMessage + "\001", NULL, m_pClient);
 
       free(cMsg);
 
@@ -440,7 +440,7 @@ public:
 
       CString sMsg = "+OK " + CString(cMsg);
       PutIRC("NOTICE " + sTarget + " :" + sMsg);
-      m_pUser->PutUser(":" + m_pNetwork->GetIRCNick().GetNickMask() + " NOTICE " + sTarget + " :" + sMessage, NULL, m_pClient);
+      m_pNetwork->PutUser(":" + m_pNetwork->GetIRCNick().GetNickMask() + " NOTICE " + sTarget + " :" + sMessage, NULL, m_pClient);
 
       free(cMsg);
 
@@ -650,7 +650,7 @@ public:
         Table.AddColumn("Key");
 
         // find all our keys and print them out
-        for (MCString::iterator it = BeginNV(); it != EndNV(); it++)
+        for (MCString::iterator it = BeginNV(); it != EndNV(); ++it)
         {
           if (it->first.Left(4) == "key ")
           {
@@ -666,7 +666,7 @@ public:
     else if (sCmd.Equals("LISTCONFIG"))
     {
       // we would use tables here, but they mangle things like irc colour codes >.>
-      for (MCString::iterator it = BeginNV(); it != EndNV(); it++)
+      for (MCString::iterator it = BeginNV(); it != EndNV(); ++it)
       {
         if (it->first.Left(7) == "config ")
         {
@@ -948,7 +948,7 @@ void CKeyExchangeTimer::RunJob()
 template <>
 void TModInfo<CFishMod>(CModInfo &Info)
 {
-  Info.SetWikiPage("CFishMod");
+  Info.SetWikiPage(MODURL);
 }
 
 NETWORKMODULEDEFS(CFishMod, MODDESC)
