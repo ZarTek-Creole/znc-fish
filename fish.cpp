@@ -660,16 +660,7 @@ public:
           }
         }
 
-        if (Table.size())
-        {
-          unsigned int uTableIdx = 0;
-          CString sLine;
-
-          while (Table.GetLine(uTableIdx++, sLine))
-          {
-            PutModule(sLine);
-          }
-        }
+        PutModule(Table);
       }
     }
     else if (sCmd.CaseCmp("LISTCONFIG") == 0)
