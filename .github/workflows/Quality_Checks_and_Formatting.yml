@@ -3,10 +3,10 @@ name: C++ Quality Checks and Formatting
 on:
   push:
     branches:
-      master
+      - master
   pull_request:
     branches:
-      master
+      - master
 
 jobs:
   build:
@@ -18,60 +18,46 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-
-      - name: Setup environment variables
-        run: |
-          echo "GITHUB_REF=${GITHUB_SHA}" >> $GITHUB_ENV
-          echo "GITHUB_REPOSITORY=${{ github.repository }}" >> $GITHUB_ENV
+        uses: actions/checkout@v4
 
       - name: Install dependencies & compile
         run: |
-          sudo apt update && sudo apt install -y \
-            git \
-            curl \
-            wget \
-            xz-utils \
-            build-essential \
-            cmake \
-            libboost-all-dev \
-            python3-pip
+          echo "Installer les dépendances nécessaires"
+          sudo apt-get update  >> /dev/null 2>&1
+          sudo apt-get install -y git python3-pip curl wget xz-utils build-essential cmake libboost-all-dev  >> /dev/null 2>&1
 
+          echo "Télécharger et installer GoogleTest"
           wget https://github.com/google/googletest/archive/refs/tags/release-1.15.0.tar.gz && \
             tar zxvf release-1.15.0.tar.gz && rm release-1.15.0.tar.gz && \
             cd googletest-release-1.15.0 && mkdir build && cd build && \
             cmake .. && make -j$(nproc) && sudo make install
 
+          echo "Installer et configurer l'environnement Python"
           pip3 install --upgrade setuptools wheel virtualenv
           python3 -m virtualenv env
           source env/bin/activate && pip install -U flake8 pytest coverage twine mock pyfakefs[unittest]
 
-          if [[ ${{ matrix.compiler }} == 'gcc' ]]; then
-            CC=gcc CXX=g++ cmake -H$GITHUB_WORKSPACE -B$GITHUB_WORKSPACE/build -DCMAKE_BUILD_TYPE=Release -DGOOGLETEST_DIR=$GITHUB_WORKSPACE/build/googlemock -DBoost_NO_SYSTEM_PATHS=ON
-            cmake --build $GITHUB_WORKSPACE/build
-          elif [[ ${{ matrix.compiler }} == 'clang' ]]; then
-            CC=clang CXX=clang++ cmake -H$GITHUB_WORKSPACE -B$GITHUB_WORKSPACE/build -DCMAKE_BUILD_TYPE=Release -DGOOGLETEST_DIR=$GITHUB_WORKSPACE/build/googlemock -DBoost_NO_SYSTEM_PATHS=ON
-            cmake --build $GITHUB_WORKSPACE/build
+          echo "Accéder au bon répertoire contenant CMakeLists.txt"
+          cd $GITHUB_WORKSPACE/.znc/modules
+
+          echo "Configuration de la construction avec CMake"
+          if [[ "${{ matrix.compiler }}" == "gcc" ]]; then
+            CC=gcc CXX=g++ cmake -H. -Bbuild -DCMAKE_BUILD_TYPE=Release
+            cmake --build build
+          elif [[ "${{ matrix.compiler }}" == "clang" ]]; then
+            CC=clang CXX=clang++ cmake -H. -Bbuild -DCMAKE_BUILD_TYPE=Release
+            cmake --build build
           else
             echo "Invalid compiler specified."
             exit 1
           fi
 
       - name: Test
-        if: matrix.run-tests == 'true'
+        if: ${{ matrix.run-tests == 'true' }}
         run: |
-          if [[ ${{ matrix.compiler }} == 'gcc' ]]; then
-            CTEST_OUTPUT_ON_FAILURE=TRUE ctest -C Release --extra-verbose
-          elif [[ ${{ matrix.compiler }} == 'clang' ]]; then
-            CTEST_OUTPUT_ON_FAILURE=TRUE ctest -C Release --extra-verbose
-          else
-            echo "Invalid compiler specified."
-            exit 1
-          fi
-
-          ctest -C Release --output-json > test-results/${{ runner.os }}-${{ matrix.compiler }}.json
+          cd build
+          CTEST_OUTPUT_ON_FAILURE=TRUE ctest --extra-verbose
+          ctest --output-json > test-results/${{ runner.os }}-${{ matrix.compiler }}.json
 
       - name: Format Code
         run: |
@@ -88,7 +74,7 @@ jobs:
           cpplint **/*.cpp --filter=-legal/copyright,-readability/casting
 
       - name: Generate Report
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: report
           path: |
@@ -98,19 +84,19 @@ jobs:
             test-results/**
 
       - name: Notify of results in comment
-        uses: actions/github-script@v3
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { context, getOctokit } = require('@actions/github');
             const octokit = getOctokit(context.token);
-            const payload = {
-              title: 'Code quality check summary',
-              body: `The quality checks have been completed. See the attached artifacts for details.`,
-            };
+            const issue_number = context.issue.number || context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
             octokit.rest.issues.createComment({
-              issue_number: context.issue.number || context.payload.pull_request.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: payload.body,
+              owner,
+              repo,
+              issue_number,
+              body: 'The quality checks have been completed. See the attached artifacts for details.'
             });
