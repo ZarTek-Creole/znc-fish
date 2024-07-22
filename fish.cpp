@@ -1,24 +1,30 @@
+/* <*fish> ZNC-FiSH v1.01 par ZarTek-Creole
+ <*fish> Description : Fish par ZarTek avec support ECB et CBC pour salons et messages privés
+ <*fish> OpenSSL 3.0.13 30 Jan 2024
+ <*fish> URL : https://github.com/ZarTek-Creole/znc-fish
+ <*fish> Auteur : ZarTek-Creole
+*/
 #include <znc/User.h>
 #include <znc/Chan.h>
 #include <znc/IRCNetwork.h>
-
+#include <netinet/in.h>
+#include <openssl/opensslv.h>
+#include <openssl/blowfish.h>
+#include <openssl/bn.h>
+#include <openssl/dh.h>
 using std::map;
 using std::pair;
 using std::vector;
-
-#include <netinet/in.h>
-
-#include <openssl/opensslv.h>
-#include <openssl/blowfish.h>
-
-#define REQUIRESSL 1
-#define MODVERSION 1.0
-#define MODURL "https://github.com/ZarTek-Creole/znc-fish"
-#define MODAUTHOR "ZarTek-Creole"
-#define MODDESC "Fish par ZarTek avec support ECB et CBC pour salon et message privée"
-#define MODSSLMIN 0x1010100fL
-#define MODSSLTEXT "OpenSSL 1.1.1 or later"
-#define NICK_PREFIX_KEY	"[nick-prefix]"
+#define NICK_PREFIX_OLD_KEY "[nick-prefix]"
+#define NICK_PREFIX_KEY     "@nick-prefix@"
+#define REQUIRESSL          1
+#define MODVERSION          1.0
+#define MODURL              "https://github.com/ZarTek-Creole/znc-fish"
+#define MODAUTHOR           "ZarTek-Creole"
+#define MODDESC             "Fish par ZarTek avec support ECB et CBC pour salon et message privée"
+#define MODSSLMIN           0x1010100fL
+#define MODSSLTEXT          "OpenSSL 1.1.1 or later"
+#define NICK_PREFIX_KEY	    "[nick-prefix]"
 
 #if OPENSSL_VERSION_NUMBER < MODSSLMIN
 /*  error with MODSSLTEXT message */
