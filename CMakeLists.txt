@@ -1,26 +1,23 @@
 cmake_minimum_required(VERSION 3.10)
+project(MyZNCModule)
 
-# Nom du projet
-project(ZncFish)
+# Spécifiez le chemin vers les fichiers d'en-tête de ZNC
+set(ZNC_INCLUDE_DIR /usr/local/include/znc)
+set(ZNC_LIBRARY_DIR /usr/local/lib)  # Ajoutez ce chemin si la bibliothèque est installée ici
 
-# Utiliser C++17
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Ajouter les chemins d'inclusion
+include_directories(${ZNC_INCLUDE_DIR})
 
-# Ajouter les fichiers source
-add_executable(znc-fish fish.cpp)
+# Ajouter les chemins de bibliothèque
+link_directories(${ZNC_LIBRARY_DIR})
 
-# Inclure les headers si nécessaire
-# include_directories(include)
+# Ajouter les fichiers sources de votre module
+set(SOURCES
+    fish.cpp
+)
 
-# Trouver GoogleTest (si vous utilisez GoogleTest pour vos tests)
-find_package(GTest REQUIRED)
-include_directories(${GTEST_INCLUDE_DIRS})
+# Créez la cible pour le module
+add_library(fish MODULE ${SOURCES})
 
-# Lier GoogleTest aux tests
-# add_executable(runTests test/test_fish.cpp)
-# target_link_libraries(runTests ${GTEST_LIBRARIES} pthread)
-
-# Ajouter des tests
-# enable_testing()
-# add_test(NAME MyTest COMMAND runTests)
+# Lier avec les bibliothèques de ZNC
+target_link_libraries(fish znc)

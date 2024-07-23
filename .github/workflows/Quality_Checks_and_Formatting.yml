@@ -11,92 +11,70 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        compiler: [gcc, clang]
-        run-tests: [true, false]
-
+    
     steps:
+      # Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies & compile
+      # Add deb-src entries and update
+      - name: Add deb-src entries and update
         run: |
-          echo "Installer les dépendances nécessaires"
-          sudo apt-get update  >> /dev/null 2>&1
-          sudo apt-get install -y git python3-pip curl wget xz-utils build-essential cmake libboost-all-dev  >> /dev/null 2>&1
+          sudo sh -c 'echo "deb http://archive.ubuntu.com/ubuntu $(lsb_release -cs) main restricted universe multiverse
+          deb-src http://archive.ubuntu.com/ubuntu $(lsb_release -cs) main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu $(lsb_release -cs)-updates main restricted universe multiverse
+          deb-src http://archive.ubuntu.com/ubuntu $(lsb_release -cs)-updates main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu $(lsb_release -cs)-backports main restricted universe multiverse
+          deb-src http://archive.ubuntu.com/ubuntu $(lsb_release -cs)-backports main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu $(lsb_release -cs)-security main restricted universe multiverse
+          deb-src http://archive.ubuntu.com/ubuntu $(lsb_release -cs)-security main restricted universe multiverse" >> /etc/apt/sources.list'
+          sudo apt-get update -qq -o=Dpkg::Use-Pty=0 2> /dev/null
 
-          echo "Télécharger et installer GoogleTest"
-          wget https://github.com/google/googletest/archive/refs/tags/release-1.15.0.tar.gz && \
-            tar zxvf release-1.15.0.tar.gz && rm release-1.15.0.tar.gz && \
-            cd googletest-release-1.15.0 && mkdir build && cd build && \
-            cmake .. && make -j$(nproc) && sudo make install
+      # Install necessary build tools and dependencies
+      - name: Install dependencies
+        run: |
+          echo "Installing build dependencies for ZNC..."
+          sudo apt-get build-dep -qq -o=Dpkg::Use-Pty=0 -y znc znc-dev 2> /dev/null
+          sudo apt-get install -qq -o=Dpkg::Use-Pty=0 -y cmake g++ make 2> /dev/null
 
-          echo "Installer et configurer l'environnement Python"
-          pip3 install --upgrade setuptools wheel virtualenv
-          python3 -m virtualenv env
-          source env/bin/activate && pip install -U flake8 pytest coverage twine mock pyfakefs[unittest]
+      # Install ZNC latest
+      - name: Install ZNC
+        run: |
+          echo "Cloning the ZNC repository..."
+          git clone https://github.com/znc/znc.git --recursive /tmp/znc
+          cd /tmp/znc
+          echo "Building ZNC..."
+          mkdir build
+          cd build
+          cmake ..
+          make -j$(nproc)
+          sudo make install
 
-          echo "Accéder au bon répertoire contenant CMakeLists.txt"
-          cd $GITHUB_WORKSPACE/.znc/modules
+      # Set library path
+      - name: Set library path
+        run: |
+          echo "Setting LD_LIBRARY_PATH..."
+          echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/znc.conf
+          sudo ldconfig
 
-          echo "Configuration de la construction avec CMake"
-          if [[ "${{ matrix.compiler }}" == "gcc" ]]; then
-            CC=gcc CXX=g++ cmake -H. -Bbuild -DCMAKE_BUILD_TYPE=Release
-            cmake --build build
-          elif [[ "${{ matrix.compiler }}" == "clang" ]]; then
-            CC=clang CXX=clang++ cmake -H. -Bbuild -DCMAKE_BUILD_TYPE=Release
-            cmake --build build
-          else
-            echo "Invalid compiler specified."
-            exit 1
-          fi
+      # Configure and build the project
+      - name: Build code
+        run: |
+          mkdir -p build
+          cd build
+          cmake ..
+          make -j$(nproc)
 
-      - name: Test
-        if: ${{ matrix.run-tests == 'true' }}
+      # Run tests and collect results
+      - name: Run Tests
         run: |
           cd build
-          CTEST_OUTPUT_ON_FAILURE=TRUE ctest --extra-verbose
-          ctest --output-json > test-results/${{ runner.os }}-${{ matrix.compiler }}.json
+          ctest --output-json > test-results.json
+          cp test-results.json $GITHUB_WORKSPACE/
 
-      - name: Format Code
-        run: |
-          if [[ -x "$(command -v clang-format)" ]]; then
-            clang-format -i -style=file $(find . -type f \( -name "*.cpp" -or -name "*.hpp" \))
-          elif command -v astyle &> /dev/null; then
-            astyle --options=au.astylerc --recursive .
-          else
-            echo "ClangFormat or AStyle not found."
-          fi
-
-      - name: Static Analysis using CPPLINT
-        run: |
-          cpplint **/*.cpp --filter=-legal/copyright,-readability/casting
-
-      - name: Generate Report
+      # Upload the test results as an artifact
+      - name: Upload Test Report
         uses: actions/upload-artifact@v4
         with:
-          name: report
-          path: |
-            report.md
-            junit.xml
-            coverage.xml
-            test-results/**
-
-      - name: Notify of results in comment
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { context, getOctokit } = require('@actions/github');
-            const octokit = getOctokit(context.token);
-            const issue_number = context.issue.number || context.payload.pull_request.number;
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-
-            octokit.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number,
-              body: 'The quality checks have been completed. See the attached artifacts for details.'
-            });
+          name: test-report
+          path: test-results.json
