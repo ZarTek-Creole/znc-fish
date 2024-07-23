@@ -39,3 +39,4 @@
 crypt.cpp
 .secrets
 scripts/start_test.sh
+fish.so
