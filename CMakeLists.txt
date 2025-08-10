@@ -12,20 +12,19 @@ set_target_properties(fish PROPERTIES OUTPUT_NAME "fish" PREFIX "" SUFFIX ".so")
 
 # OpenSSL for crypto usage inside module
 find_package(OpenSSL REQUIRED)
-target_link_libraries(fish PRIVATE OpenSSL::Crypto OpenSSL::SSL)
+target_link_libraries(fish PRIVATE OpenSSL::Crypto)
 
-# Locate ZNC headers (provided by znc-dev)
-find_path(ZNC_INCLUDE_DIR
+# Locate ZNC include ROOT, so includes like <znc/IRCNetwork.h> work
+find_path(ZNC_INCLUDE_ROOT
   NAMES znc/IRCNetwork.h
   PATHS /usr/include /usr/local/include
-  PATH_SUFFIXES znc
 )
-if(NOT ZNC_INCLUDE_DIR)
+if(NOT ZNC_INCLUDE_ROOT)
   message(FATAL_ERROR "ZNC headers not found. Please install znc-dev.")
 endif()
-message(STATUS "Using ZNC_INCLUDE_DIR=${ZNC_INCLUDE_DIR}")
+message(STATUS "Using ZNC_INCLUDE_ROOT=${ZNC_INCLUDE_ROOT}")
 
-target_include_directories(fish PRIVATE ${ZNC_INCLUDE_DIR})
+target_include_directories(fish PRIVATE ${ZNC_INCLUDE_ROOT})
 
 # Common defines
 if(UNIX)
