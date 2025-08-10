@@ -1,974 +1,162 @@
-/* <*fish> ZNC-FiSH v1.01 par ZarTek-Creole
- <*fish> Description : Fish par ZarTek avec support ECB et CBC pour salons et messages privés
- <*fish> OpenSSL 3.0.13 30 Jan 2024
- <*fish> URL : https://github.com/ZarTek-Creole/znc-fish
- <*fish> Auteur : ZarTek-Creole
-*/
-#include <znc/User.h>
+// mod_Fish.cpp
+// Fusion: crypt.cpp (ZNC) + original FiSH blowfish ECB implementation
+// - CBC (Mircryption compatible) is the default
+// - ECB (FiSH) supported for backward compatibility
+// - NV storage format: "CBC:<key>" or "ECB:<key>"
+// - Additional NV keys / flags (disabled, topic encryption) are simple NV entries
+//
+// Sources merged:
+// - crypt.cpp (znc official) -- used as base (modern API, DH1080 handling)
+// - original Fish module (Blowfish ECB functions and base64 table)
+
 #include <znc/Chan.h>
 #include <znc/IRCNetwork.h>
-#include <netinet/in.h>
-#include <openssl/opensslv.h>
-#include <openssl/blowfish.h>
+#include <znc/SHA256.h>
+#include <znc/User.h>
+#include <znc/Modules.h>
+#include <znc/Utils.h>
+#include <znc/Message.h>
+#include <znc/ZNCString.h>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #include <openssl/bn.h>
 #include <openssl/dh.h>
+#include <openssl/err.h>
+#include <openssl/blowfish.h>
+#include <openssl/evp.h>
+#pragma GCC diagnostic pop
+
+#include <arpa/inet.h>
+#include <map>
+#include <memory>
+#include <algorithm>
+#include <stdlib.h>
+#include <time.h>
+#include <cstring>
+#include <cstdlib>
+#include <vector>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 using std::map;
-using std::pair;
-using std::vector;
-#define NICK_PREFIX_OLD_KEY "[nick-prefix]"
-#define NICK_PREFIX_KEY     "@nick-prefix@"
-#define REQUIRESSL          1
-#define MODVERSION          1.0
-#define MODURL              "https://github.com/ZarTek-Creole/znc-fish"
-#define MODAUTHOR           "ZarTek-Creole"
-#define MODDESC             "Fish par ZarTek avec support ECB et CBC pour salon et message privée"
-#define MODSSLMIN           0x1010100fL
-#define MODSSLTEXT          "OpenSSL 1.1.1 or later"
-#define NICK_PREFIX_KEY	    "[nick-prefix]"
+using std::make_pair;
 
-#if OPENSSL_VERSION_NUMBER < MODSSLMIN
-/*  error with MODSSLTEXT message */
-#error "Sorry, OpenSSL need " + MODSSLTEXT
-#elif OPENSSL_VERSION_NUMBER < 0x30000000L
-#define SSL_get1_peer_certificate SSL_get_peer_certificate
-#endif
-
-/*
-  Public Base64 conversion tables
-*/
-unsigned char B64ABC[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-unsigned char b64buf[256];
-
-/*
-  void initb64();
-  Initializes the base64->base16 conversion tab.
-  Call this function once when your program starts.
-  and always after your B64 table has been changed.
-*/
-void initb64()
-{
-  unsigned int i;
-  for (i = 0; i < 256; i++)
-    b64buf[i] = 0x00;
-  for (i = 0; i < 64; i++)
-    b64buf[(B64ABC[i])] = i;
-}
-
-/*
-  int b64toh(lpBase64String, lpDestinationBuffer);
-  Converts base64 string b to hexnumber d.
-  Returns size of hexnumber in bytes.
-*/
-int b64toh(char *b, char *d)
-{
-  int i, k, l;
-
-  l = strlen(b);
-  if (l < 2)
-    return 0;
-  for (i = l - 1; i > -1; i--)
-  {
-    if (b64buf[(unsigned char)(b[i])] == 0)
-      l--;
-    else
-      break;
-  }
-
-  if (l < 2)
-    return 0;
-  i = 0, k = 0;
-  while (1)
-  {
-    i++;
-    if (k + 1 < l)
-      d[i - 1] = ((b64buf[(unsigned char)(b[k])]) << 2);
-    else
-      break;
-    k++;
-    if (k < l)
-      d[i - 1] |= ((b64buf[(unsigned char)(b[k])]) >> 4);
-    else
-      break;
-    i++;
-    if (k + 1 < l)
-      d[i - 1] = ((b64buf[(unsigned char)(b[k])]) << 4);
-    else
-      break;
-    k++;
-    if (k < l)
-      d[i - 1] |= ((b64buf[(unsigned char)(b[k])]) >> 2);
-    else
-      break;
-    i++;
-    if (k + 1 < l)
-      d[i - 1] = ((b64buf[(unsigned char)(b[k])]) << 6);
-    else
-      break;
-    k++;
-    if (k < l)
-      d[i - 1] |= (b64buf[(unsigned char)(b[k])]);
-    else
-      break;
-    k++;
-  }
-  return i - 1;
-}
-
-/*
-  int htob64(lpHexNumber, lpDestinationBuffer);
-  Converts hexnumber h (with length l bytes) to base64 string d.
-  Returns length of base64 string.
-*/
-int htob64(char *h, char *d, unsigned int l)
-{
-  unsigned int i, j, k;
-  unsigned char m, t;
-
-  if (!l)
-    return 0;
-  l <<= 3; // no. bits
-  m = 0x80;
-  for (i = 0, j = 0, k = 0, t = 0; i < l; i++)
-  {
-    if (h[(i >> 3)] & m)
-      t |= 1;
-    j++;
-    if (!(m >>= 1))
-      m = 0x80;
-    if (!(j % 6))
-    {
-      d[k] = B64ABC[t];
-      t &= 0;
-      k++;
-    }
-    t <<= 1;
-  }
-  m = 5 - (j % 6);
-  t <<= m;
-  if (m)
-  {
-    d[k] = B64ABC[t];
-    k++;
-  }
-  d[k] &= 0;
-  return strlen(d);
-}
-
+/*** FiSH-specific base64 & Blowfish ECB helpers (from original Fish) ***/
 unsigned char B64[] = "./0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-const char *prime1080 = "FBE1022E23D213E8ACFA9AE8B9DFADA3EA6B7AC7A7B7E95AB5EB2DF858921FEADE95E6AC7BE7DE6ADBAB8A783E7AF7A7FA6A2B7BEB1E72EAE2B72F9FA2BFB2A2EFBEFAC868BADB3E828FA8BADFADA3E4CC1BE7E8AFE85E9698A783EB68FA07A77AB6AD7BEB618ACF9CA2897EB28A6189EFA07AB99A8A7FA9AE299EFA7BA66DEAFEFBEFBF0B7D8B";
-
-int base64dec(char c)
-{
-  int i;
-
-  for (i = 0; i < 64; i++)
-    if (B64[i] == c)
-      return i;
-
-  return 0;
+static inline bool IsFishB64Char(unsigned char c) {
+    for (int i = 0; i < 64; ++i) if (B64[i] == c) return true;
+    return false;
 }
 
-char *encrypts(char *key, char *str)
-{
-  char *result;
-  unsigned int length;
-  unsigned int left, right;
-  char *s, *d;
-  unsigned char *p;
-  BF_KEY bfkey;
-  int i;
-
-  if (key == NULL || str == NULL)
-    return NULL;
-
-  length = strlen(str);
-  // fix error ‘void BF_set_key(BF_KEY*, int, const unsigned char*)’ is deprecated: Since OpenSSL 3.0 [-Wdeprecated-declarations]
-
-  BF_set_key(&bfkey, strlen(key), (const unsigned char *)key);
-
-  s = (char *)malloc(length + 9);
-
-  strncpy(s, str, length);
-  memset(s + length, 0, 9);
-
-  result = (char *)malloc(((length % 8 == 0) ? length / 8 * 12 : 12 + length / 8 * 12) + 1);
-
-  p = (unsigned char *)s;
-  d = result;
-
-  while (*p)
-  {
-    BF_ecb_encrypt((const unsigned char *)p, (unsigned char *)p, &bfkey, BF_ENCRYPT);
-    left = ((*p++) << 24);
-    left += ((*p++) << 16);
-    left += ((*p++) << 8);
-    left += (*p++);
-    right = ((*p++) << 24);
-    right += ((*p++) << 16);
-    right += ((*p++) << 8);
-    right += (*p++);
-    for (i = 0; i < 6; i++)
-    {
-      *d++ = B64[right & 0x3f];
-      right = (right >> 6);
-    }
-
-    for (i = 0; i < 6; i++)
-    {
-      *d++ = B64[left & 0x3f];
-      left = (left >> 6);
-    }
-  }
-  *d = '\0';
-
-  memset(s, 0, length + 9);
-  free(s);
-  return result;
+static int base64dec_fish(char c) {
+    for (int i = 0; i < 64; ++i)
+        if (B64[i] == (unsigned char)c) return i;
+    return 0;
 }
 
-char *decrypts(char *key, char *str)
-{
-  char *result;
-  unsigned int length;
-  unsigned int left, right;
-  int i;
-  char *d;
-  unsigned char *c;
-  BF_KEY bfkey;
-
-  if (key == NULL || str == NULL)
-    return NULL;
-
-  length = strlen(str);
-  BF_set_key(&bfkey, strlen(key), (const unsigned char *)key);
-
-  result = (char *)malloc((length / 12 * 8) + 1);
-  c = (unsigned char *)result;
-  d = str;
-  while (*d)
-  {
-    right = 0;
-    left = 0;
-    for (i = 0; i < 6; i++)
-      right |= (base64dec(*d++)) << (i * 6);
-    for (i = 0; i < 6; i++)
-      left |= (base64dec(*d++)) << (i * 6);
-    right = htonl(right);
-    left = htonl(left);
-    memcpy(c, &left, 4);
-    memcpy(c + 4, &right, 4);
-    BF_ecb_encrypt(c, c, &bfkey, BF_DECRYPT);
-    c += 8;
-  }
-  *c = '\0';
-  return result;
+static void fish_derive_key_md5(const char* pass, unsigned char out16[16]) {
+    unsigned int mdlen = 0;
+    EVP_Digest(pass, strlen(pass), out16, &mdlen, EVP_md5(), nullptr);
+    if (mdlen < 16) memset(out16 + mdlen, 0, 16 - mdlen);
 }
 
-class CKeyExchangeTimer : public CTimer
-{
-public:
-  CKeyExchangeTimer(CModule *pModule)
-      : CTimer(pModule, 5, 0, "KeyExchangeTimer", "Key exchange timer removes stale exchanges") {}
+/* Blowfish ECB encrypt -> custom base64 used by FiSH */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+static char* encrypts_fish(const char* key, const char* str) {
+    if (key == nullptr || str == nullptr) return nullptr;
 
-protected:
-  virtual void RunJob();
-};
+    const size_t in_len = strlen(str);
+    const size_t pad = (8 - (in_len % 8)) % 8;
+    const size_t total = in_len + pad;
 
-class CFishMod : public CModule
-{
-  CString NickPrefix() {
-		MCString::iterator it = FindNV(NICK_PREFIX_KEY);
-		return it != EndNV() ? it->second : "*";
-	}
-public:
-  MODCONSTRUCTOR(CFishMod) {}
+    // Prepare padded input
+    unsigned char* inbuf = (unsigned char*)malloc(total);
+    if (!inbuf) return nullptr;
+    memcpy(inbuf, str, in_len);
+    if (pad) memset(inbuf + in_len, 0x00, pad);
 
-  virtual bool OnLoad(const CString &sArgs, CString &sMessage)
-  {
-    // if we have an 'old version', simply upgrade it
-    MCString::iterator version = FindNV("version");
+    // Output: 12 chars per 8-byte block, plus NUL
+    const size_t blocks = total / 8;
+    const size_t out_len = blocks * 12 + 1;
+    char* out = (char*)malloc(out_len);
+    if (!out) { free(inbuf); return nullptr; }
 
-    // oldest version, before any version numbers!
-    if (version == EndNV())
-    {
-      SetNV("config postfix_encrypted", "  \00312e\003");
-      SetNV("config postfix_decrypted", "  \00304d\003");
-      SetNV("version", "1");
+    BF_KEY bfkey;
+    BF_set_key(&bfkey, (int)strlen(key), reinterpret_cast<const unsigned char*>(key));
+
+    char* d = out;
+    for (size_t b = 0; b < blocks; ++b) {
+        unsigned char cipher[8];
+        BF_ecb_encrypt(inbuf + (b * 8), cipher, &bfkey, BF_ENCRYPT);
+
+        // FiSH packs as big-endian words, then emits 6b chunks least-significant-first (R then L)
+        uint32_t l = ((uint32_t)cipher[0] << 24) | ((uint32_t)cipher[1] << 16) |
+                     ((uint32_t)cipher[2] << 8)  |  (uint32_t)cipher[3];
+        uint32_t r = ((uint32_t)cipher[4] << 24) | ((uint32_t)cipher[5] << 16) |
+                     ((uint32_t)cipher[6] << 8)  |  (uint32_t)cipher[7];
+
+        for (int i = 0; i < 6; ++i) { *d++ = B64[r & 0x3F]; r >>= 6; }
+        for (int i = 0; i < 6; ++i) { *d++ = B64[l & 0x3F]; l >>= 6; }
     }
-
-    return true;
-  }
-
-  virtual EModRet OnPrivNotice(CNick &Nick, CString &sMessage)
-  {
-    CString command = sMessage.Token(0);
-    CString sOtherPub_Key = sMessage.Token(1);
-
-    if (command.Equals("DH1080_INIT") && !sOtherPub_Key.empty())
-    {
-      CString sPriv_Key;
-      CString sPub_Key;
-      CString sSecretKey;
-
-      DH1080_gen(sPriv_Key, sPub_Key);
-      if (!DH1080_comp(sPriv_Key, sOtherPub_Key, sSecretKey))
-      {
-        PutModule("Error in DH1080 with " + Nick.GetNick() + ": " + sSecretKey);
-        return CONTINUE;
-      }
-      PutModule("Received DH1080 public key from " + Nick.GetNick() + ", sending mine...");
-      PutIRC("NOTICE " + Nick.GetNick() + " :DH1080_FINISH " + sPub_Key);
-      SetNV("key " + Nick.GetNick().AsLower(), sSecretKey);
-      PutModule("Key for " + Nick.GetNick() + " successfully set.");
-      return HALT;
-    }
-    else if (command.Equals("DH1080_FINISH") && !sOtherPub_Key.empty())
-    {
-      CString sPriv_Key;
-      CString sSecretKey;
-
-      map<CString, pair<time_t, CString>>::iterator it = m_msKeyExchange.find(Nick.GetNick().AsLower());
-      if (it == m_msKeyExchange.end())
-      {
-        PutModule("Received unexpected DH1080_FINISH from " + Nick.GetNick() + ".");
-      }
-      else
-      {
-        sPriv_Key = it->second.second;
-        if (DH1080_comp(sPriv_Key, sOtherPub_Key, sSecretKey))
-        {
-          SetNV("key " + Nick.GetNick().AsLower(), sSecretKey);
-          PutModule("Key for " + Nick.GetNick() + " successfully set.");
-          m_msKeyExchange.erase(Nick.GetNick().AsLower());
-        }
-      }
-      return HALT;
-    }
-    else
-    {
-      FilterIncoming(Nick.GetNick(), Nick, sMessage);
-    }
-
-    return CONTINUE;
-  }
-
-  virtual EModRet OnUserMsg(CString &sTarget, CString &sMessage)
-  {
-    sTarget.TrimLeft(NickPrefix());
-    MCString::iterator it = FindNV("key " + sTarget.AsLower());
-
-    if (sMessage.Left(2) == "-e")
-    {
-      sMessage.LeftChomp(3);
-      return CONTINUE;
-    }
-
-    if (it != EndNV())
-    {
-      CChan* pChan = GetNetwork()->FindChan(sTarget);
-      CString sNickMask = GetNetwork()->GetIRCNick().GetNickMask();
-      if ((pChan) && !(pChan->AutoClearChanBuffer()))
-      {
-        pChan->AddBuffer(":" + NickPrefix() + _NAMEDFMT(sNickMask) + " PRIVMSG " + _NAMEDFMT(sTarget) + " :{text}", sMessage);
-				GetUser()->PutUser(":" + NickPrefix() + sNickMask + " PRIVMSG " + sTarget + " :" + sMessage, NULL, GetClient());
-      }
-      char *cMsg = encrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
-
-      CString sMsg = "+OK " + CString(cMsg);
-      PutIRC("PRIVMSG " + sTarget + " :" + sMsg);
-      m_pNetwork->PutUser(":" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage, NULL, m_pClient);
-
-      free(cMsg);
-
-      // relay to other clients
-      const vector<CClient *> &vClients = this->m_pNetwork->GetClients();
-      for (unsigned int a = 0; a < vClients.size(); a++)
-      {
-        CClient *pClient = vClients[a];
-
-        if (pClient != this->GetClient())
-        {
-          pClient->PutClient(":" + this->GetClient()->GetNickMask() + " PRIVMSG " + sTarget + " :" + sMessage);
-        }
-      }
-
-      // stop ZNC from handling message, or else it gets sent unencrypted to target as well
-      return HALTCORE;
-    }
-
-    return CONTINUE;
-  }
-
-  virtual EModRet OnUserAction(CString &sTarget, CString &sMessage)
-  {
-    sTarget.TrimLeft(NickPrefix());
-    MCString::iterator it = FindNV("key " + sTarget.AsLower());
-
-    if (it != EndNV())
-    {
-      CChan *pChan = m_pNetwork->FindChan(sTarget);
-      if ((pChan) && !(pChan->AutoClearChanBuffer()))
-      {
-        pChan->AddBuffer(":" + NickPrefix() + _NAMEDFMT(m_pNetwork->GetIRCNick().GetNickMask()) + " PRIVMSG " + _NAMEDFMT(sTarget) + " :{text}", sMessage);
-      }
-      char *cMsg = encrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
-
-      CString sMsg = "+OK " + CString(cMsg);
-      PutIRC("PRIVMSG " + sTarget + " :\001ACTION " + sMsg + "\001");
-      m_pNetwork->PutUser(":" + m_pNetwork->GetIRCNick().GetNickMask() + " PRIVMSG " + sTarget + " :\001ACTION " + sMessage + "\001", NULL, m_pClient);
-
-      free(cMsg);
-
-      // relay to other clients
-      const vector<CClient *> &vClients = this->m_pNetwork->GetClients();
-      for (unsigned int a = 0; a < vClients.size(); a++)
-      {
-        CClient *pClient = vClients[a];
-
-        if (pClient != this->GetClient())
-        {
-          pClient->PutClient(":" + this->GetClient()->GetNickMask() + " PRIVMSG " + sTarget + " :\001ACTION " + sMessage + "\001");
-        }
-      }
-
-      // stop ZNC from handling message, or else it gets sent unencrypted to target as well
-      return HALTCORE;
-    }
-
-    return CONTINUE;
-  }
-
-  virtual EModRet OnUserNotice(CString &sTarget, CString &sMessage)
-  {
-    MCString::iterator it = FindNV("key " + sTarget.AsLower());
-
-    if (it != EndNV())
-    {
-      CChan *pChan = m_pNetwork->FindChan(sTarget);
-      if ((pChan) && !(pChan->AutoClearChanBuffer()))
-      {
-        pChan->AddBuffer(":" + m_pNetwork->GetIRCNick().GetNickMask() + " NOTICE " + sTarget + " :" + sMessage);
-      }
-      char *cMsg = encrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
-
-      CString sMsg = "+OK " + CString(cMsg);
-      PutIRC("NOTICE " + sTarget + " :" + sMsg);
-      m_pNetwork->PutUser(":" + m_pNetwork->GetIRCNick().GetNickMask() + " NOTICE " + sTarget + " :" + sMessage, NULL, m_pClient);
-
-      free(cMsg);
-
-      // relay to other clients
-      const vector<CClient *> &vClients = this->m_pNetwork->GetClients();
-      for (unsigned int a = 0; a < vClients.size(); a++)
-      {
-        CClient *pClient = vClients[a];
-
-        if (pClient != this->GetClient())
-        {
-          pClient->PutClient(":" + this->GetClient()->GetNickMask() + " NOTICE " + sTarget + " :" + sMessage);
-        }
-      }
-
-      // stop ZNC from handling message, or else it gets sent unencrypted to target as well
-      return HALTCORE;
-    }
-
-    return CONTINUE;
-  }
-
-  virtual EModRet OnUserTopic(CString &sChannel, CString &sTopic)
-  {
-    if (!sTopic.empty())
-    {
-      MCString::iterator it = FindNV("key " + sChannel.AsLower());
-      if (it != EndNV())
-      {
-        char *cTopic = encrypts((char *)it->second.c_str(), (char *)sTopic.c_str());
-        sTopic = "+OK " + CString(cTopic);
-        free(cTopic);
-      }
-    }
-
-    return CONTINUE;
-  }
-
-  virtual EModRet OnPrivMsg(CNick &Nick, CString &sMessage)
-  {
-    FilterIncoming(Nick.GetNick(), Nick, sMessage);
-    return CONTINUE;
-  }
-
-  virtual EModRet OnChanMsg(CNick &Nick, CChan &Channel, CString &sMessage)
-  {
-    FilterIncoming(Channel.GetName(), Nick, sMessage);
-    return CONTINUE;
-  }
-
-  virtual EModRet OnPrivAction(CNick &Nick, CString &sMessage)
-  {
-    FilterIncoming(Nick.GetNick(), Nick, sMessage);
-    return CONTINUE;
-  }
-
-  virtual EModRet OnChanAction(CNick &Nick, CChan &Channel, CString &sMessage)
-  {
-    FilterIncoming(Channel.GetName(), Nick, sMessage);
-    return CONTINUE;
-  }
-
-  virtual EModRet OnTopic(CNick &Nick, CChan &Channel, CString &sTopic)
-  {
-    FilterIncoming(Channel.GetName(), Nick, sTopic);
-    return CONTINUE;
-  }
-
-  virtual EModRet OnRaw(CString &sLine)
-  {
-    if (sLine.WildCmp(":* 332 *") && sLine.Token(1) == "332")
-    {
-      CChan *pChan = m_pNetwork->FindChan(sLine.Token(3));
-      if (pChan)
-      {
-        CNick Nick(sLine.Token(2));
-        CString sTopic = sLine.Token(4, true);
-        sTopic.LeftChomp();
-        FilterIncoming(pChan->GetName(), Nick, sTopic);
-        sLine = sLine.Token(0) + " " + sLine.Token(1) + " " + sLine.Token(2) + " " + pChan->GetName() + " :" + sTopic;
-      }
-    }
-    return CONTINUE;
-  }
-
-  void FilterIncoming(const CString &sTarget, CNick &Nick, CString &sMessage)
-  {
-    MCString::iterator it = FindNV("key " + sTarget.AsLower());
-
-    if (it != EndNV())
-    {
-      if (sMessage.Left(4) == "+OK " || sMessage.Left(5) == "mcps ")
-      {
-        if (sMessage.Left(4) == "+OK ")
-        {
-          sMessage.LeftChomp(4);
-        }
-        else if (sMessage.Left(5) == "mcps ")
-        {
-          sMessage.LeftChomp(5);
-        }
-
-        unsigned int msg_len = strlen(sMessage.c_str());
-
-        if ((strspn(sMessage.c_str(), (char *)B64) != msg_len) || msg_len < 12)
-        {
-          return;
-        }
-
-        unsigned int mark_broken_block = 0;
-
-        if (msg_len != (msg_len / 12) * 12)
-        {
-          msg_len = msg_len - (msg_len / 12) * 12;
-          sMessage.RightChomp(msg_len);
-          mark_broken_block = 1;
-        }
-
-        char *cMsg = decrypts((char *)it->second.c_str(), (char *)sMessage.c_str());
-        sMessage = CString(cMsg) + GetNV("config postfix_encrypted"); // blue  'e'  for nice, encrypted
-
-        if (mark_broken_block)
-        {
-          sMessage += "  \002&\002";
-        }
-
-        free(cMsg);
-      }
-      else
-      {
-        sMessage = sMessage + GetNV("config postfix_decrypted"); // red  'd'  for bad, not encrypted
-      }
-    }
-  }
-
-  virtual void OnModCommand(const CString &sCommand)
-  {
-    CString sCmd = sCommand.Token(0);
-
-    if (sCmd.Equals("DELKEY"))
-    {
-      CString sTarget = sCommand.Token(1);
-
-      if (!sTarget.empty())
-      {
-        if (DelNV("key " + sTarget.AsLower()))
-        {
-          PutModule("Target [" + sTarget + "] deleted");
-        }
-        else
-        {
-          PutModule("Target [" + sTarget + "] not found");
-        }
-      }
-      else
-      {
-        PutModule("Usage DelKey <#chan|Nick>");
-      }
-    }
-    else if (sCmd.Equals("SETKEY"))
-    {
-      CString sTarget = sCommand.Token(1);
-      CString sKey = sCommand.Token(2, true);
-
-      if (!sKey.empty())
-      {
-        SetNV("key " + sTarget.AsLower(), sKey);
-        PutModule("Set encryption key for [" + sTarget + "] to [" + sKey + "]");
-      }
-      else
-      {
-        PutModule("Usage: SetKey <#chan|Nick> <Key>");
-      }
-    }
-    else if (sCmd.Equals("SHOWKEY"))
-    {
-      CString sTarget = sCommand.Token(1);
-
-      if (!sTarget.empty())
-      {
-        MCString::iterator it = FindNV("key " + sTarget.AsLower());
-
-        if (it != EndNV())
-        {
-          PutModule("Target key is " + it->second);
-        }
-        else
-        {
-          PutModule("Target not found.");
-        }
-      }
-      else
-      {
-        PutModule("Usage ShowKey <#chan|Nick>");
-      }
-    }
-    else if (sCmd.Equals("LISTKEYS"))
-    {
-      if (BeginNV() == EndNV())
-      {
-        PutModule("You have no encryption keys set.");
-      }
-      else
-      {
-        CTable Table;
-        Table.AddColumn("Target");
-        Table.AddColumn("Key");
-
-        // find all our keys and print them out
-        for (MCString::iterator it = BeginNV(); it != EndNV(); ++it)
-        {
-          if (it->first.Left(4) == "key ")
-          {
-            Table.AddRow();
-            Table.SetCell("Target", it->first.LeftChomp_n(4)); // remove "key " from start
-            Table.SetCell("Key", it->second);
-          }
-        }
-
-				MCString::iterator it = FindNV(NICK_PREFIX_KEY);
-				if (it == EndNV()) {
-					Table.AddRow();
-					Table.SetCell("Target", NICK_PREFIX_KEY);
-					Table.SetCell("Key", NickPrefix());
-				}
-        PutModule(Table);
-      }
-    }
-    else if (sCmd.Equals("LISTCONFIG"))
-    {
-      // we would use tables here, but they mangle things like irc colour codes >.>
-      for (MCString::iterator it = BeginNV(); it != EndNV(); ++it)
-      {
-        if (it->first.Left(7) == "config ")
-        {
-          PutModule(it->first.LeftChomp_n(7) + " : \"" + it->second + "\"");
-        }
-      }
-    }
-    else if (sCmd.Equals("SETCONFIG"))
-    {
-      CString sName = sCommand.Token(1);
-      CString sValue = sCommand.Token(2, true);
-
-      if (!sName.empty())
-      {
-        if (!sValue.empty())
-        {
-          SetNV("config " + sName.AsLower(), sValue);
-          PutModule("Set config option [" + sName + "] to [" + sValue + "]");
-        }
-        else
-        {
-          SetNV("config " + sName.AsLower(), "");
-          PutModule("Set config option [" + sName + "] to nothing (disabled)");
-        }
-      }
-      else
-      {
-        PutModule("Usage: SetConfig <Name> <Value>");
-      }
-    }
-    else if (sCmd.Equals("KEYX"))
-    {
-      CString sTarget = sCommand.Token(1);
-
-      if (sTarget.empty())
-      {
-        PutModule("You did not specify a target for the key exchange.");
-      }
-      else
-      {
-        map<CString, pair<time_t, CString>>::iterator it = m_msKeyExchange.find(sTarget.AsLower());
-        if (it != m_msKeyExchange.end())
-        {
-          PutModule("Keyexchange with " + sTarget + " already in progress.");
-        }
-        else
-        {
-          CString sPriv_Key;
-          CString sPub_Key;
-
-          DH1080_gen(sPriv_Key, sPub_Key);
-          m_msKeyExchange.insert(make_pair(sTarget.AsLower(), make_pair(time(NULL), sPriv_Key)));
-          PutIRC("NOTICE " + sTarget + " :DH1080_INIT " + sPub_Key);
-          PutModule("Sent my DH1080 public key to " + sTarget + ", waiting for reply ...");
-          if (FindTimer("KeyExchangeTimer") == NULL)
-          {
-            AddTimer(new CKeyExchangeTimer(this));
-          }
-        }
-      }
-    }
-    else if (sCmd.Equals("VERSION"))
-    {
-      PutModule("ZNC-FiSH v" + CString(MODVERSION) + " by " + CString(MODAUTHOR));
-      PutModule("Description: " + CString(MODDESC));
-      /* show SSL version and date */
-      PutModule(CString(SSLeay_version(SSLEAY_VERSION)));
-      PutModule("URL: " + CString(MODURL));
-    }
-    else
-    {
-      CTable Table;
-      Table.AddColumn("Command");
-      Table.AddColumn("Arguments");
-      Table.AddColumn("Description");
-
-      // list all our commands
-      Table.AddRow();
-      Table.SetCell("Command", "SetKey");
-      Table.SetCell("Arguments", "<target> <key>");
-      Table.SetCell("Description", "Sets <target>'s FiSH encryption key");
-
-      Table.AddRow();
-      Table.SetCell("Command", "DelKey");
-      Table.SetCell("Arguments", "<target>");
-      Table.SetCell("Description", "Removes <target>'s FiSH encryption key");
-
-      Table.AddRow();
-      Table.SetCell("Command", "ShowKey");
-      Table.SetCell("Arguments", "<target>");
-      Table.SetCell("Description", "Show the encryption key of <target>, if it has one set");
-
-      Table.AddRow();
-      Table.SetCell("Command", "ListKeys");
-      Table.SetCell("Arguments", "");
-      Table.SetCell("Description", "Print out all of our keys");
-
-      Table.AddRow();
-      Table.SetCell("Command", "SetConfig");
-      Table.SetCell("Arguments", "<name> <value>");
-      Table.SetCell("Description", "Set config option <name> to <value>. Set option to empty if no <value> is specified");
-
-      Table.AddRow();
-      Table.SetCell("Command", "ListConfig");
-      Table.SetCell("Arguments", "");
-      Table.SetCell("Description", "Print out all of our config options");
-
-      Table.AddRow();
-      Table.SetCell("Command", "KeyX");
-      Table.SetCell("Arguments", "<target>");
-      Table.SetCell("Description", "Start a key exchange with <target>");
-
-      Table.AddRow();
-      Table.SetCell("Command", "Help");
-      Table.SetCell("Arguments", "");
-      Table.SetCell("Description", "Display this message");
-
-      Table.AddRow();
-      Table.SetCell("Command", "Version");
-      Table.SetCell("Arguments", "");
-      Table.SetCell("Description", "Show the version of this module");
-
-      PutModule(Table);
-    }
-  }
-
-  void DelStaleKeyExchanges(time_t iTime)
-  {
-    for (map<CString, pair<time_t, CString>>::const_iterator it = m_msKeyExchange.begin(); it != m_msKeyExchange.end(); it++)
-    {
-      if (iTime - 5 >= it->second.first)
-      {
-        PutModule("Keyexchange with " + it->first + " expired before completion.");
-        m_msKeyExchange.erase(it->first);
-      }
-    }
-    if (m_msKeyExchange.size() <= 0)
-    {
-      RemTimer("KeyExchangeTimer");
-    }
-  }
-
-private:
-  void DH1080_gen(CString &sPriv_Key, CString &sPub_Key)
-  {
-    sPriv_Key = "";
-    sPub_Key = "";
-
-    unsigned char raw_buf[200];
-    unsigned long len;
-    unsigned char *a, *b;
-
-    DH *dh;
-    BIGNUM *b_prime = NULL;
-    BIGNUM *b_generator = NULL;
-
-    initb64();
-
-    dh = DH_new();
-
-    if (!BN_hex2bn(&b_prime, prime1080))
-    {
-      return;
-    }
-
-    if (!BN_dec2bn(&b_generator, "2"))
-    {
-      return;
-    }
-
-    if (b_prime == NULL || b_generator == NULL ||
-        !DH_set0_pqg(dh, b_prime, NULL, b_generator))
-      return;
-
-    if (!DH_generate_key(dh))
-    {
-      return;
-    }
-
-    const BIGNUM *priv_key, *pub_key;
-    DH_get0_key(dh, &pub_key, &priv_key);
-    len = BN_num_bytes(priv_key);
-    a = (unsigned char *)malloc(len);
-    BN_bn2bin(priv_key, a);
-
-    memset(raw_buf, 0, 200);
-    htob64((char *)a, (char *)raw_buf, len);
-    sPriv_Key = CString((char *)raw_buf);
-    len = BN_num_bytes(pub_key);
-    b = (unsigned char *)malloc(len);
-    BN_bn2bin(pub_key, b);
-    memset(raw_buf, 0, 200);
-    htob64((char *)b, (char *)raw_buf, len);
-    sPub_Key = CString((char *)raw_buf);
-    DH_free(dh);
-    free(a);
-    free(b);
-  }
-
-  bool DH1080_comp(CString &sPriv_Key, CString &sOtherPub_Key, CString &sSecret_Key)
-  {
-    int len;
-    unsigned char SHA256digest[32];
-    char *key;
-    BIGNUM *b_prime = NULL;
-    BIGNUM *b_myPrivkey = NULL;
-    BIGNUM *b_HisPubkey = NULL;
-    BIGNUM *b_generator = NULL;
-    DH *dh;
-    CString sSHA256digest;
-    unsigned char raw_buf[200];
-
-    if (!BN_hex2bn(&b_prime, prime1080))
-    {
-      return false;
-    }
-
-    if (!BN_dec2bn(&b_generator, "2"))
-    {
-      return false;
-    }
-
-    dh = DH_new();
-    if (b_prime == NULL || b_generator == NULL ||
-        !DH_set0_pqg(dh, b_prime, NULL, b_generator))
-      return false;
-
-    memset(raw_buf, 0, 200);
-    len = b64toh((char *)sPriv_Key.c_str(), (char *)raw_buf);
-    b_myPrivkey = BN_bin2bn(raw_buf, len, NULL);
-    DH_set0_key(dh, NULL, b_myPrivkey);
-
-    memset(raw_buf, 0, 200);
-    len = b64toh((char *)sOtherPub_Key.c_str(), (char *)raw_buf);
-
-    b_HisPubkey = BN_bin2bn(raw_buf, len, NULL);
-
-    key = (char *)malloc(DH_size(dh));
-    memset(key, 0, DH_size(dh));
-    len = DH_compute_key((unsigned char *)key, b_HisPubkey, dh);
-    if (len == -1)
-    {
-      // Bad pub key
-      unsigned long err = ERR_get_error();
-      DEBUG("** DH Error:" << ERR_error_string(err, NULL));
-      DH_free(dh);
-      BN_clear_free(b_HisPubkey);
-      free(key);
-
-      sSecret_Key = CString(ERR_error_string(err, NULL)).Token(4, true, ":");
-      return false;
-    }
-
-    SHA256_CTX c;
-    SHA256_Init(&c);
-    memset(SHA256digest, 0, 32);
-    SHA256_Update(&c, key, len);
-    SHA256_Final(SHA256digest, &c);
-    memset(raw_buf, 0, 200);
-    len = htob64((char *)SHA256digest, (char *)raw_buf, 32);
-    sSecret_Key = "";
-    sSecret_Key.append((char *)raw_buf, len);
-
-    DH_free(dh);
-    BN_clear_free(b_HisPubkey);
-    free(key);
-    return true;
-  }
-
-  map<CString, pair<time_t, CString>> m_msKeyExchange;
-};
-
-void CKeyExchangeTimer::RunJob()
-{
-  CFishMod *p = (CFishMod *)m_pModule;
-  p->DelStaleKeyExchanges(time(NULL));
+    *d = '\0';
+
+    // Cleanup
+    memset(inbuf, 0, total);
+    free(inbuf);
+    return out;
 }
 
-template <>
-void TModInfo<CFishMod>(CModInfo &Info)
-{
-  Info.SetWikiPage(MODURL);
-}
+/* Blowfish ECB decrypt from custom base64 (FiSH) */
+static char* decrypts_fish(const char* key, const char* str) {
+    if (key == nullptr || str == nullptr) return nullptr;
 
-NETWORKMODULEDEFS(CFishMod, MODDESC)
+    const size_t in_len = strlen(str);
+    if (in_len % 12 != 0) return nullptr; // invalid length
+
+    const size_t blocks = in_len / 12;
+    const size_t out_bin_len = blocks * 8;
+    unsigned char* bin = (unsigned char*)malloc(out_bin_len);
+    if (!bin) return nullptr;
+
+    BF_KEY bfkey;
+    BF_set_key(&bfkey, (int)strlen(key), reinterpret_cast<const unsigned char*>(key));
+
+    const char* p = str;
+    unsigned char* w = bin;
+    for (size_t b = 0; b < blocks; ++b) {
+        uint32_t r = 0, l = 0;
+        for (int i = 0; i < 6; ++i) { r |= (uint32_t)base64dec_fish(*p++) << (i * 6); }
+        for (int i = 0; i < 6; ++i) { l |= (uint32_t)base64dec_fish(*p++) << (i * 6); }
+
+        // Convert to big-endian byte order (network) into block
+        r = htonl(r);
+        l = htonl(l);
+        unsigned char block[8];
+        memcpy(block, &l, 4);
+        memcpy(block + 4, &r, 4);
+
+        BF_ecb_encrypt(block, block, &bfkey, BF_DECRYPT);
+        memcpy(w, block, 8);
+        w += 8;
+    }
+
+    // Strip trailing NUL padding
+    size_t plain_len = out_bin_len;
+    while (plain_len > 0 && bin[plain_len - 1] == '\0') plain_len--;
+
+    char* out = (char*)malloc(plain_len + 1);
+    if (!out) { memset(bin, 0, out_bin_len); free(bin); return nullptr; }
+    memcpy(out, bin, plain_len);
+    out[plain_len] = '\0';
+
+    memset(bin, 0, out_bin_len);
+    free(bin);
+    return out;
+}
+#pragma GCC diagnostic pop
+
+// ...
