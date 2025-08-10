@@ -21,13 +21,21 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             znc znc-dev libssl-dev libicu-dev pkg-config cmake g++ make
           znc --version || true
+          dpkg -s znc-dev || true
+          dpkg -L znc-dev | sed -n '1,200p' || true
+          test -d /usr/include/znc && ls -la /usr/include/znc | sed -n '1,200p' || true
 
-      - name: Configure & build with CMake
+      - name: Configure CMake
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build
-          cmake --build build -j2
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (verbose)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build -j2 --verbose
           if [ -f build/fish.so ]; then cp build/fish.so .; fi
           test -f fish.so
 
