@@ -1,0 +1,31 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            znc-dev libssl-dev libicu-dev pkg-config cmake g++ make
+
+      - name: Build module
+        run: |
+          znc-buildmod fish.cpp
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            fish.so
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
