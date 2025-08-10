@@ -13,17 +13,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install dependencies (ZNC + toolchain)
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            libssl-dev libicu-dev pkg-config cmake g++ make
-          # Optional ZNC headers if available
-          sudo apt-get install -y --no-install-recommends znc-dev || true
+            znc znc-dev libssl-dev libicu-dev pkg-config cmake g++ make
+          znc --version || true
 
-      - name: Build with CMake (portable)
+      - name: Configure & build with CMake
         shell: bash
         run: |
           set -euxo pipefail
