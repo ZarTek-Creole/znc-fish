@@ -1,0 +1,30 @@
+name: build
+
+on:
+  push:
+    branches: [ master, feature/** ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            znc-dev libssl-dev libicu-dev pkg-config cmake g++ make
+
+      - name: Build module
+        run: |
+          znc-buildmod fish.cpp
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fish-module
+          path: fish.so
