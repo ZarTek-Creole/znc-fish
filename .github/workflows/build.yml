@@ -17,11 +17,27 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            znc-dev libssl-dev libicu-dev pkg-config cmake g++ make
+            znc znc-dev libssl-dev libicu-dev pkg-config cmake g++ make
 
-      - name: Build module
+      - name: Build with znc-buildmod if available
+        id: build_znc
         run: |
-          znc-buildmod fish.cpp
+          if command -v znc-buildmod >/dev/null 2>&1; then
+            znc-buildmod fish.cpp
+            echo "built=1" >> $GITHUB_OUTPUT
+          else
+            echo "built=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fallback build with CMake if needed
+        if: steps.build_znc.outputs.built == '0'
+        run: |
+          cmake -S . -B build
+          cmake --build build -j2
+          # try to find built .so
+          if [ -f fish.so ]; then echo OK; \
+          elif [ -f build/fish.so ]; then cp build/fish.so .; \
+          else echo "fish.so not found"; exit 1; fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
