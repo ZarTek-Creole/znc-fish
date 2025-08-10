@@ -13,55 +13,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Debug environment (pre-install)
-        shell: bash
-        run: |
-          set -x
-          echo "REF=$GITHUB_REF SHA=$GITHUB_SHA EVENT=$GITHUB_EVENT_NAME"
-          uname -a || true
-          if command -v lsb_release >/dev/null 2>&1; then lsb_release -a || true; else cat /etc/os-release || true; fi
-          env | sort | sed -n '1,120p'
-
       - name: Install dependencies
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            ca-certificates apt-transport-https gnupg lsb-release \
-            znc znc-dev libssl-dev libicu-dev pkg-config cmake g++ make
-          apt-cache policy znc znc-dev libssl-dev libicu-dev || true
+            libssl-dev libicu-dev pkg-config cmake g++ make
+          # Optional ZNC headers if available
+          sudo apt-get install -y --no-install-recommends znc-dev || true
 
-      - name: Check znc-buildmod availability
-        shell: bash
-        run: |
-          set -euxo pipefail
-          which znc-buildmod || true
-          znc-buildmod -h || true
-
-      - name: Build with znc-buildmod if available
-        id: build_znc
-        shell: bash
-        run: |
-          set -euxo pipefail
-          if command -v znc-buildmod >/dev/null 2>&1; then
-            znc-buildmod fish.cpp
-            echo "built=1" >> "$GITHUB_OUTPUT"
-          else
-            echo "built=0" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Fallback build with CMake if needed
-        if: steps.build_znc.outputs.built == '0'
+      - name: Build with CMake (portable)
         shell: bash
         run: |
           set -euxo pipefail
           cmake -S . -B build
           cmake --build build -j2
-          # try to find built .so
-          if [ -f fish.so ]; then echo OK; \
-          elif [ -f build/fish.so ]; then cp build/fish.so .; \
-          else echo "fish.so not found"; exit 1; fi
+          if [ -f build/fish.so ]; then cp build/fish.so .; fi
+          test -f fish.so
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
