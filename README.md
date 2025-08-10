@@ -1,11 +1,17 @@
 # ZNC FiSH module (ECB/CBC, DH1080) — ZNC 1.11.x + OpenSSL 3
 
+[![build](https://github.com/ZarTek-Creole/znc-fish/workflows/build/badge.svg)](https://github.com/ZarTek-Creole/znc-fish/actions/workflows/build.yml)
+[![C++ Quality Checks and Formatting](https://github.com/ZarTek-Creole/znc-fish/workflows/C++%20Quality%20Checks%20and%20Formatting/badge.svg)](https://github.com/ZarTek-Creole/znc-fish/actions/workflows/Quality_Checks_and_Formatting.yml)
+[![Test ZNC Module](https://github.com/ZarTek-Creole/znc-fish/workflows/Test%20ZNC%20Module/badge.svg)](https://github.com/ZarTek-Creole/znc-fish/actions/workflows/test-znc-module.yml)
+
 FiSH-compatible encryption module for ZNC:
 - Blowfish ECB (FiSH) and CBC (Mircryption-compatible)
 - DH1080 key exchange (FiSH10 trailing 'A' compatibility)
 - Per-target keys, auto mode learning (ECB/CBC)
 - Incoming/outgoing processing toggles, notices/actions, topics
 - Rich commands with readable tables and help
+
+See also: [Commands](docs/COMMANDS.md), [Troubleshooting](docs/TROUBLESHOOTING.md), [CHANGELOG](CHANGELOG.md)
 
 ## Requirements
 - ZNC 1.11.x
