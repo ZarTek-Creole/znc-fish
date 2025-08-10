@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an idea
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      placeholder: A clear and concise description...
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you'd like
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Describe alternatives you've considered
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
