@@ -13,25 +13,49 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Debug environment (pre-install)
+        shell: bash
         run: |
-          sudo apt-get update
+          set -x
+          echo "REF=$GITHUB_REF SHA=$GITHUB_SHA EVENT=$GITHUB_EVENT_NAME"
+          uname -a || true
+          if command -v lsb_release >/dev/null 2>&1; then lsb_release -a || true; else cat /etc/os-release || true; fi
+          env | sort | sed -n '1,120p'
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
+            ca-certificates apt-transport-https gnupg lsb-release \
             znc znc-dev libssl-dev libicu-dev pkg-config cmake g++ make
+          apt-cache policy znc znc-dev libssl-dev libicu-dev || true
+
+      - name: Check znc-buildmod availability
+        shell: bash
+        run: |
+          set -euxo pipefail
+          which znc-buildmod || true
+          znc-buildmod -h || true
 
       - name: Build with znc-buildmod if available
         id: build_znc
+        shell: bash
         run: |
+          set -euxo pipefail
           if command -v znc-buildmod >/dev/null 2>&1; then
             znc-buildmod fish.cpp
-            echo "built=1" >> $GITHUB_OUTPUT
+            echo "built=1" >> "$GITHUB_OUTPUT"
           else
-            echo "built=0" >> $GITHUB_OUTPUT
+            echo "built=0" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Fallback build with CMake if needed
         if: steps.build_znc.outputs.built == '0'
+        shell: bash
         run: |
+          set -euxo pipefail
           cmake -S . -B build
           cmake --build build -j2
           # try to find built .so
